@@ -1,0 +1,18 @@
+[package]
+name = "PananaShareMarket"
+version = "0.3.0"
+authors = ["panana-team"]
+
+[addresses]
+panana = "_"
+
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
+
+[dev-dependencies]
+
+
+

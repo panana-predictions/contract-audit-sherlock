@@ -1,0 +1,18 @@
+[package]
+name = "Panana"
+version = "0.3.0"
+authors = ["panana-team"]
+
+[addresses]
+panana = "_"
+admin = "_"
+# Pyth, deployer, and wormhole addresses are required for Pyth
+pyth = "0x7e783b349d3e89cf5931af376ebeadbfab855b3fa239b7ada8f5a92fbea6b387"
+deployer = "0xb31e712b26fd295357355f6845e77c888298636609e93bc9b05f0f604049f434"
+wormhole = "0x5bc11445584a763c1fa7ed39081f1b920954da14e04b32440cba863d03e19625"
+
+[dependencies]
+Pyth = { local = "./external-deps/pyth-crosschain" }
+Wormhole = { local = "./external-deps/wormhole" }
+# Remove AptosFramework to remove duplicate dependency errors in IntelliJ linter; but need to add it again before compilation or compilation won't work
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", rev = "mainnet", subdir = "aptos-move/framework/aptos-framework" }
