@@ -172,11 +172,11 @@ module panana::crypto_market {
     public entry fun place_bet(
         account: &signer,
         crypto_series_obj: Object<CryptoMarketSeries>,
-        fa_metadata: Object<Metadata>,
         bet_up: bool,
         value: u64
     ) acquires CryptoMarketSeries, UnclaimedMarkets, CryptoMarket {
         let crypto_series = borrow_global_mut<CryptoMarketSeries>(object::object_address(&crypto_series_obj));
+
         assert!(value >= crypto_series.min_bet, E_BET_TOO_LOW);
         assert!(!crypto_series.is_frozen, E_FROZEN);
 
@@ -207,14 +207,14 @@ module panana::crypto_market {
         };
 
         // Place user prediction
-        let bet_value = primary_fungible_store::withdraw(account, fa_metadata, value);
+        let bet_value = primary_fungible_store::withdraw(account, crypto_series.betting_token, value);
         place_bet_impl(account, crypto_series_obj, crypto_series, bet_up, bet_value);
         event::emit(PlaceBetEvent{
             sender: signer::address_of(account),
             market_series_obj: crypto_series_obj,
-            fa_metadata,
+            fa_metadata: crypto_series.betting_token,
             bet_up,
-            value: value,
+            value,
             market_index,
         });
     }
