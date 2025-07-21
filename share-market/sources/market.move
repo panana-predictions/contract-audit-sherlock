@@ -40,6 +40,8 @@ module panana::market {
     const E_FROZEN: u64 = 5;
     // The operation exceedes the provided slippage limit
     const E_SLIPPAGE: u64 = 6;
+    // The outcome is invalid / no yes- or no-token
+    const E_INVALID_OUTCOME: u64 = 7;
 
     // Denominator for all fees, allows for percentiles with 2 decimals (i.e. 2,45% = 245 of 10_000)
     const FEE_DENOMINATOR: u64 = 10_000;
@@ -621,6 +623,7 @@ module panana::market {
     public entry fun resolve_market(account: &signer, market_obj: Object<Market>, outcome: Object<Metadata>) acquires Market {
         let market = borrow_global_mut<Market>(object::object_address(&market_obj));
         let account_address = signer::address_of(account);
+        assert!(outcome == market.yes_token || outcome == market.no_token, E_INVALID_OUTCOME);
 
         if (market.resolution.is_none()) {
             // Handle the market's first resolution

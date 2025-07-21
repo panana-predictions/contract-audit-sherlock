@@ -12,6 +12,8 @@ module panana::market_test {
     #[test_only]
     use aptos_framework::aptos_account;
     #[test_only]
+    use aptos_framework::aptos_coin;
+    #[test_only]
     use aptos_framework::aptos_coin::{AptosCoin, initialize_for_test};
     #[test_only]
     use aptos_framework::coin;
@@ -669,6 +671,41 @@ module panana::market_test {
 
         let vault_balance = primary_fungible_store::balance(object_address(&market_obj_fee), aptos_coin_metadata);
         assert!(vault_balance == 0);
+    }
+
+    #[expected_failure(abort_code = market::E_INVALID_OUTCOME)]
+    #[test(aptos_framework = @aptos_framework, panana = @panana, user1 = @user1, user2 = @user2, market_creator = @admin)]
+    public fun test_resolve_market_invalid_outcome_token(aptos_framework: &signer, panana: &signer, user1: &signer, user2: &signer, market_creator: &signer) {
+        let (burn_ref, mint_ref) = initialize_for_test(aptos_framework);
+        market::init_test(aptos_framework, panana);
+
+        let aptos_coin_metadata = *coin::paired_metadata<AptosCoin>().borrow();
+
+        market::create_market(
+            market_creator,
+            aptos_coin_metadata,
+            string::utf8(b"Will Panana be big?"),
+            string::utf8(b"Great question with an obvious answer"),
+            string::utf8(b"Always resolves to yes"),
+            vector[string::utf8(b"https://panana.com")],
+            0,
+            1000 * OCTAS_PER_APT,
+            1000 * OCTAS_PER_APT,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            false,
+            true
+        );
+        let market_obj_fee = market::market_by_id(0);
+
+        coin::destroy_burn_cap(burn_ref);
+        coin::destroy_mint_cap(mint_ref);
+
+        market::resolve_market(market_creator, market_obj_fee, aptos_coin_metadata);
     }
 
     #[test(aptos_framework = @aptos_framework, panana = @panana, user1 = @user1, user2 = @user2, market_creator = @admin)]
