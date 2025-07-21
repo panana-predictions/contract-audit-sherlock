@@ -680,6 +680,7 @@ module panana::market {
     /// The challenge costs are part of the market fees and are manually returned to the challenging user if the
     /// challenge was successfull.
     public entry fun challenge_market(account: &signer, market_obj: Object<Market>) acquires Market {
+        assert_unfrozen(market_obj);
         let market = borrow_global_mut<Market>(object::object_address(&market_obj));
         let (is_final, _) = is_finalized_with_result_impl(market);
         assert!(!is_final && market.resolution.is_some(), E_INVALID_MARKET_STATE);
