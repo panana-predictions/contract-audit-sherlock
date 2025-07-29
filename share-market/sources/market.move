@@ -734,7 +734,7 @@ module panana::market {
         let account_address = signer::address_of(account);
 
         let is_admin_or_resolver_on_initial_resolution = market.resolution.is_none() && (config::admin() == account_address || config::resolver() == account_address);
-        let is_challenge_pending = market.resolution.is_some() && market.resolution.borrow().challenged_by.is_some() && market.resolution.borrow().challenged_outcome.is_none();
+        let is_challenge_pending = market.resolution.is_some() && market.resolution.borrow().outcome.is_some() && market.resolution.borrow().challenged_by.is_some() && market.resolution.borrow().challenged_outcome.is_none();
         let is_oracle_on_challenged_open_market = is_challenge_pending && config::resolution_oracle() == account_address;
         assert!(is_admin_or_resolver_on_initial_resolution || is_oracle_on_challenged_open_market, E_UNAUTHORIZED);
 
@@ -756,6 +756,20 @@ module panana::market {
                 cpmm_no
             });
         };
+
+        // If the outcome was challenged and the market is then dissolved, return the challenger funds to the challenger.
+        if (is_oracle_on_challenged_open_market) {
+            let challenger = market.resolution.borrow().challenged_by.borrow();
+            // If the outcome was decided against the initial outcome, the challenger was right.
+            // Thus, we return the stake to the challenger. Otherwise, we keep it as market fees.
+            dispatchable_fungible_asset::transfer(
+                market_signer(market),
+                market.market_fee_store,
+                primary_fungible_store::primary_store(*challenger, market.vault_type),
+                market.challenge_costs,
+            );
+        };
+
         event::emit(MarketUpdatedEvent { market_obj });
     }
 
