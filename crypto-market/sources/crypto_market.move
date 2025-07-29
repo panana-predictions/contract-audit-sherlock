@@ -352,37 +352,6 @@ module panana::crypto_market {
         end_price > start_price
     }
 
-    /// Get the reward proportional to the user's input from the pool.
-    fun redeem_reward_from_pool(
-        market_ref: &mut CryptoMarket,
-        market_signer: &signer,
-        fa_metadata: Object<Metadata>,
-        shareholder: address,
-        market_resolved_up: bool
-    ): FungibleAsset {
-        let total_pool_coins = market_ref.up_pool.total_coins() + market_ref.down_pool.total_coins();
-
-        let new_up_pool_coins = if(market_resolved_up) total_pool_coins else 0;
-        let new_down_pool_coins = total_pool_coins - new_up_pool_coins;
-
-        market_ref.up_pool.update_total_coins(new_up_pool_coins);
-        market_ref.down_pool.update_total_coins(new_down_pool_coins);
-
-        let reward_tokens = fungible_asset::zero(fa_metadata);
-        if (market_resolved_up && market_ref.up_pool.contains(shareholder)) {
-            let up_shares = market_ref.up_pool.shares(shareholder);
-            let redeemed_up_coins = market_ref.up_pool.redeem_shares(shareholder, up_shares);
-
-            fungible_asset::merge(&mut reward_tokens, primary_fungible_store::withdraw(market_signer, fa_metadata, redeemed_up_coins));
-        };
-        if (!market_resolved_up && market_ref.down_pool.contains(shareholder)) {
-            let down_shares = market_ref.down_pool.shares(shareholder);
-            let redeemed_down_coins = market_ref.down_pool.redeem_shares(shareholder, down_shares);
-            fungible_asset::merge(&mut reward_tokens, dispatchable_fungible_asset::withdraw(market_signer, fa_metadata, redeemed_down_coins));
-        };
-        reward_tokens
-    }
-
     /// Returns true if the user has pending rewards for the provided market.
     fun can_claim_rewards(account_address: address, crypto_series_obj: Object<CryptoMarketSeries>, crypto_series: &CryptoMarketSeries, market_index: u64): bool acquires UnclaimedMarkets {
         if (!exists<UnclaimedMarkets>(account_address)) {
