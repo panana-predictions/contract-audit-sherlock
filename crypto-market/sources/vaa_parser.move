@@ -16,12 +16,20 @@ module panana::vaa_parser {
     use wormhole::cursor::Cursor;
 
     const PYTHNET_ACCUMULATOR_UPDATE_MAGIC: u64 = 1347305813;
+    const ACCUMULATOR_UPDATE_WORMHOLE_VERIFICATION_MAGIC: u64 = 1096111958;
+
+    const E_INVALID_ACCUMULATOR_PAYLOAD: u64 = 0;
+    const E_INVALID_ACCUMULATOR_MESSAGE: u64 = 1;
+    const E_PYTHNET_MAGIC_NUMBER_MISMATCH: u64 = 2;
+    const E_INVALID_DATA_SOURCE: u64 = 3;
+    const E_INVALID_WORMHOLE_MESSAGE: u64 = 4;
+    const E_INVALID_PROOF: u64 = 5;
 
     /// Public function to parse and validate an incoming vaa message
     public fun parse_and_verify_accumulator_message(vaa: vector<u8>): vector<PriceInfo> {
         let cur = cursor::init(vaa);
         let header: u64 = deserialize::deserialize_u32(&mut cur);
-        assert!(header == PYTHNET_ACCUMULATOR_UPDATE_MAGIC, 1212);
+        assert!(header == PYTHNET_ACCUMULATOR_UPDATE_MAGIC, E_PYTHNET_MAGIC_NUMBER_MISMATCH);
         let result = parse_and_verify_accumulator_cursor(&mut cur);
         cursor::destroy_empty(cur);
         result
@@ -31,14 +39,14 @@ module panana::vaa_parser {
     /// embedded VAA, parses and verifies the price updates and returns an array of PriceInfo representing the updates
     fun parse_and_verify_accumulator_cursor(cursor: &mut Cursor<u8>): vector<PriceInfo> {
         let major = deserialize::deserialize_u8(cursor);
-        assert!(major == 1, 123456);
+        assert!(major == 1, E_INVALID_ACCUMULATOR_PAYLOAD);
         let _minor = deserialize::deserialize_u8(cursor);
 
         let trailing_size = deserialize::deserialize_u8(cursor);
         deserialize::deserialize_vector(cursor, (trailing_size as u64));
 
         let proof_type = deserialize::deserialize_u8(cursor);
-        assert!(proof_type == 0, 54321);
+        assert!(proof_type == 0, E_INVALID_ACCUMULATOR_PAYLOAD);
 
         let vaa_size = deserialize::deserialize_u16(cursor);
         let vaa = deserialize::deserialize_vector(cursor, vaa_size);
@@ -48,7 +56,7 @@ module panana::vaa_parser {
                 data_source::new(
                     u16::to_u64(vaa::get_emitter_chain(&msg_vaa)),
                     vaa::get_emitter_address(&msg_vaa))),
-            7777);
+            E_INVALID_DATA_SOURCE);
         let merkle_root_hash = parse_accumulator_merkle_root_from_vaa_payload(vaa::get_payload(&msg_vaa));
         vaa::destroy(msg_vaa);
         parse_and_verify_accumulator_updates(cursor, &merkle_root_hash)
@@ -60,7 +68,7 @@ module panana::vaa_parser {
         let message_cur = cursor::init(message);
         let message_type = deserialize::deserialize_u8(&mut message_cur);
 
-        assert!(message_type == 0, 998); // PriceFeedMessage variant
+        assert!(message_type == 0, E_INVALID_ACCUMULATOR_MESSAGE); // PriceFeedMessage variant
         let price_identifier = price_identifier::from_byte_vec(deserialize::deserialize_vector(&mut message_cur, 32));
         let price = deserialize::deserialize_i64(&mut message_cur);
         let conf = deserialize::deserialize_u64(&mut message_cur);
@@ -103,7 +111,7 @@ module panana::vaa_parser {
                 vector::push_back(&mut merkle_path, keccak160::new(hash));
                 path_size = path_size - 1;
             };
-            assert!(merkle::check(&merkle_path, merkle_root, message), 126834);
+            assert!(merkle::check(&merkle_path, merkle_root, message), E_INVALID_PROOF);
             update_size = update_size - 1;
         };
         updates
@@ -114,9 +122,9 @@ module panana::vaa_parser {
     fun parse_accumulator_merkle_root_from_vaa_payload(message: vector<u8>): keccak160::Hash {
         let msg_payload_cursor = cursor::init(message);
         let payload_type = deserialize::deserialize_u32(&mut msg_payload_cursor);
-        assert!(payload_type == 1096111958, 3333);
+        assert!(payload_type == ACCUMULATOR_UPDATE_WORMHOLE_VERIFICATION_MAGIC, E_INVALID_WORMHOLE_MESSAGE);
         let wh_message_payload_type = deserialize::deserialize_u8(&mut msg_payload_cursor);
-        assert!(wh_message_payload_type == 0, 1233); // Merkle variant
+        assert!(wh_message_payload_type == 0, E_INVALID_WORMHOLE_MESSAGE); // Merkle variant
         let _merkle_root_slot = deserialize::deserialize_u64(&mut msg_payload_cursor);
         let _merkle_root_ring_size = deserialize::deserialize_u32(&mut msg_payload_cursor);
         let merkle_root_hash = deserialize::deserialize_vector(&mut msg_payload_cursor, 20);
