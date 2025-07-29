@@ -40,6 +40,14 @@ module panana::market {
     const E_FROZEN: u64 = 5;
     // The operation exceedes the provided slippage limit
     const E_SLIPPAGE: u64 = 6;
+    // The outcome is invalid / no yes- or no-token
+    const E_INVALID_OUTCOME: u64 = 7;
+    // Collateral is missing to fully payout users.
+    const E_COLLATERAL_MISSING: u64 = 8;
+    // The provided resolution timestamp is invalid.
+    const E_INVALID_RESOLUTION_TIMESTAMP: u64 = 9;
+    // The market is in an invalid state to perform the trade.
+    const E_MARKET_NOT_TRADEABLE: u64 = 10;
 
     // Denominator for all fees, allows for percentiles with 2 decimals (i.e. 2,45% = 245 of 10_000)
     const FEE_DENOMINATOR: u64 = 10_000;
@@ -449,7 +457,7 @@ module panana::market {
         let (is_final, _result) = is_finalized_with_result_impl(market);
 
         // Final Resolution case
-        assert!(!is_final, E_INVALID_MARKET_STATE);
+        assert!(!is_final && market.resolution.is_none(), E_MARKET_NOT_TRADEABLE);
 
         let (price_yes_before, price_no_before) = prices_impl(market);
 
@@ -520,6 +528,8 @@ module panana::market {
 
         // Calls only possible if market is fully funded and open or finalized
         let (is_final, result_opt) = is_finalized_with_result_impl(market);
+        // Don't let users trade if there is a resolution but it's not yet final.
+        assert!(is_final || market.resolution.is_none(), E_MARKET_NOT_TRADEABLE);
         assert!(market.liquidity_fully_funded, E_INVALID_MARKET_STATE);
 
         // Store price before selling shares for event emission
