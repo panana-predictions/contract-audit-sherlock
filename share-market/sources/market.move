@@ -40,6 +40,12 @@ module panana::market {
     const E_FROZEN: u64 = 5;
     // The operation exceedes the provided slippage limit
     const E_SLIPPAGE: u64 = 6;
+    // The outcome is invalid / no yes- or no-token
+    const E_INVALID_OUTCOME: u64 = 7;
+    // Collateral is missing to fully payout users.
+    const E_COLLATERAL_MISSING: u64 = 8;
+    // The provided resolution timestamp is invalid.
+    const E_INVALID_RESOLUTION_TIMESTAMP: u64 = 9;
 
     // Denominator for all fees, allows for percentiles with 2 decimals (i.e. 2,45% = 245 of 10_000)
     const FEE_DENOMINATOR: u64 = 10_000;
@@ -249,6 +255,7 @@ module panana::market {
         assert!(!is_undercollaterized || signer::address_of(account) == config::admin(), E_UNAUTHORIZED);
         assert!(buy_market_fee_numerator + buy_lp_fee_numerator + buy_creator_fee_numerator <= FEE_DENOMINATOR, E_INVALID_AMOUNT);
         assert!(sell_market_fee_numerator + sell_lp_fee_numerator + sell_creator_fee_numerator <= FEE_DENOMINATOR, E_INVALID_AMOUNT);
+        assert!(estimated_resolution >= timestamp::now_seconds(), E_INVALID_RESOLUTION_TIMESTAMP);
 
         let global_state = borrow_global_mut<MarketGlobalState>(@panana);
 
