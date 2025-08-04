@@ -4,10 +4,9 @@ module panana::market {
     use std::option::Option;
     use std::signer;
     use std::string::{String};
+    use aptos_std::big_ordered_map;
     use aptos_std::math64;
-    use aptos_std::simple_map;
-    use aptos_std::smart_table;
-    use aptos_std::smart_table::SmartTable;
+    use aptos_std::ordered_map;
     use aptos_std::type_info::account_address;
     use aptos_framework::aggregator_v2;
     use aptos_framework::aptos_account;
@@ -141,9 +140,9 @@ module panana::market {
             pool: Object<LiquidityPool>,
 
             // A list of all liquidity providers and their provided data
-            lp_buyin: SmartTable<address, LpBuyIn>,
+            lp_buyin: big_ordered_map::BigOrderedMap<address, LpBuyIn>,
             // A list of all weighted user buyins, used to calculate P&L
-            user_buyin: SmartTable<address, UserBuyIn>,
+            user_buyin: big_ordered_map::BigOrderedMap<address, UserBuyIn>,
             // Liquidity accumulator describes the accumulated fee per provided liquidity unit
             acc_fee_per_liquidity: aggregator_v2::Aggregator<u64>,
             // The total amount of liquidity provided to this market
@@ -295,7 +294,7 @@ module panana::market {
         global_state.cur_market_num = global_state.cur_market_num + 1;
 
         // Store liquidity provisioning information for proportional lp fee calculation depending on provided liquidity later
-        let lp_buyin = smart_table::new<address, LpBuyIn>();
+        let lp_buyin = big_ordered_map::new<address, LpBuyIn>();
         let total_undercollaterized = if (is_undercollaterized) initial_liquidity else 0;
         let total_fully_collaterized = if (is_undercollaterized) 0 else initial_liquidity;
         lp_buyin.add(caller, LpBuyIn { total_undercollaterized, total_fully_collaterized, fee_per_liquidity: 0 });
@@ -333,7 +332,7 @@ module panana::market {
             acc_fee_per_liquidity: aggregator_v2::create_unbounded_aggregator_with_value(0),
             total_lp_liq: initial_liquidity,
             lp_buyin,
-            user_buyin: smart_table::new(),
+            user_buyin: big_ordered_map::new(),
             min_liq_required,
             liquidity_fully_funded: initial_liquidity >= min_liq_required,
             description,
@@ -395,6 +394,7 @@ module panana::market {
         market.question = *question.borrow_with_default(&market.question);
         market.description = *description.borrow_with_default(&market.description);
         market.rules = *rules.borrow_with_default(&market.rules);
+
         market.resolution_sources = *resolution_sources.borrow_with_default(&market.resolution_sources);
         assert!(market.resolution_sources.length() > 0, E_INVALID_AMOUNT);
         market.estimated_resolution = *estimated_resolution.borrow_with_default(&market.estimated_resolution);
@@ -822,10 +822,10 @@ module panana::market {
 
         // 4) Track fee entitlements
         let acc_fee = aggregator_v2::read(&market.acc_fee_per_liquidity);
-        let rec = market.lp_buyin.borrow_mut_with_default(
-            signer::address_of(account),
-            LpBuyIn { total_fully_collaterized: 0, total_undercollaterized: 0, fee_per_liquidity: acc_fee }
-        );
+        if (!market.lp_buyin.contains(&signer::address_of(account))) {
+            market.lp_buyin.add(signer::address_of(account), LpBuyIn { total_fully_collaterized: 0, total_undercollaterized: 0, fee_per_liquidity: acc_fee });
+        };
+        let rec = market.lp_buyin.borrow_mut(&signer::address_of(account));
         if (is_synthetic) {
             let prev = rec.total_undercollaterized;
             let updated = prev + amount;
@@ -887,7 +887,7 @@ module panana::market {
             is_synthetic
         );
         market.total_lp_liq = market.total_lp_liq - lp_fraction;
-        let lp_rec = market.lp_buyin.borrow_mut(signer::address_of(account));
+        let lp_rec = market.lp_buyin.borrow_mut(&signer::address_of(account));
         if (is_synthetic) {
             lp_rec.total_undercollaterized = lp_rec.total_undercollaterized - lp_fraction;
         } else {
@@ -1014,10 +1014,13 @@ module panana::market {
     /// Update the user buyin price per share. The user buy in per share represents the avg. price the user paid for a
     /// single share.
     fun update_user_buyin(user: address, market: &mut Market, purchase_amount: u64, price: u64, new_shares: u64, is_yes: bool) {
-        let user_buyin = market.user_buyin.borrow_mut_with_default(user, UserBuyIn {
-            paid_per_yes_share: 0,
-            paid_per_no_share: 0,
-        });
+        if (!market.user_buyin.contains(&user)) {
+            market.user_buyin.add(user, UserBuyIn {
+                paid_per_yes_share: 0,
+                paid_per_no_share: 0,
+            });
+        };
+        let user_buyin = market.user_buyin.borrow_mut(&user);
 
         let token = if (is_yes) market.yes_token else market.no_token;
 
@@ -1067,7 +1070,11 @@ module panana::market {
     #[view]
     public fun lp_fees(market_obj: Object<Market>, lp_address: address): u64 acquires Market {
         let market = borrow_global<Market>(object::object_address(&market_obj));
-        let res = market.lp_buyin.borrow_with_default(lp_address, &LpBuyIn { total_fully_collaterized: 0, total_undercollaterized: 0, fee_per_liquidity: 0 });
+        let res = if (market.lp_buyin.contains(&lp_address)) {
+            market.lp_buyin.borrow(&lp_address)
+        } else {
+            &LpBuyIn { total_fully_collaterized: 0, total_undercollaterized: 0, fee_per_liquidity: 0 }
+        };
         let acc_fee_per_liquidity = aggregator_v2::read(&market.acc_fee_per_liquidity);
         math64::mul_div((acc_fee_per_liquidity - res.fee_per_liquidity), res.total_fully_collaterized + res.total_undercollaterized, constants::price_scaling_factor())
     }
@@ -1096,10 +1103,14 @@ module panana::market {
     #[view]
     public fun user_buyin(market_obj: Object<Market>, user: address): (u64, u64) acquires Market {
         let market = borrow_global_mut<Market>(object_address(&market_obj));
-        let res = market.user_buyin.borrow_with_default(user, &UserBuyIn {
-            paid_per_yes_share: 0,
-            paid_per_no_share: 0
-        });
+        let res = if (market.user_buyin.contains(&user)) {
+            market.user_buyin.borrow(&user)
+        } else {
+            &UserBuyIn {
+                paid_per_yes_share: 0,
+                paid_per_no_share: 0
+            }
+        };
         (res.paid_per_yes_share, res.paid_per_no_share)
     }
 
@@ -1238,7 +1249,7 @@ module panana::market {
         acc_fee_per_liquidity: u64,
         is_synthetic: bool,
     ): (u64, u64) {
-        let lp_buyin = market.lp_buyin.borrow_mut(user);
+        let lp_buyin = market.lp_buyin.borrow_mut(&user);
         let (lp_token, lps_token) = cpmm::lp_tokens(market.pool);
         let user_lp_balance = primary_fungible_store::balance(user, lp_token);
         let user_lps_balance = primary_fungible_store::balance(user, lps_token);
@@ -1261,7 +1272,7 @@ module panana::market {
     /// Returns the prices for yes and no tokens, in that order.
     fun prices_impl(market: &Market): (u64, u64) {
         let (is_final, result) = is_finalized_with_result_impl(market);
-        let token_prices = simple_map::new_from(
+        let token_prices = ordered_map::new_from(
             vector[market.yes_token, market.no_token],
             vector[0, 0]
         );

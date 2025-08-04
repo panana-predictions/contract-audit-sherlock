@@ -8,12 +8,10 @@ module panana::crypto_market {
     use std::signer::address_of;
     use std::vector;
     use aptos_std::math64;
+    use aptos_std::ordered_map;
     use aptos_std::pool_u64_unbound;
     use aptos_std::pool_u64_unbound::Pool;
-    use aptos_std::simple_map;
     use aptos_std::smart_vector;
-    use aptos_std::table_with_length;
-    use aptos_framework::dispatchable_fungible_asset;
     use aptos_framework::event;
     use aptos_framework::fungible_asset;
     use aptos_framework::fungible_asset::{Metadata, FungibleAsset};
@@ -45,6 +43,10 @@ module panana::crypto_market {
     const E_PRICE_NOT_FOUND: u64 = 7;
     // Interactions as user with a market are not possible if the crypto series is frozen
     const E_FROZEN: u64 = 8;
+    // Duration of a crypto series must not be zero
+    const E_DURATION_ZERO: u64 = 9;
+    // Fee of a crypto series must be less than 100%
+    const E_FEE_TOO_HIGH: u64 = 10;
 
     // Static fee donimator to allow fees in permille (percent with up to 2 decimals)
     const FEE_DENOMINATOR: u64 = 10_000;
@@ -94,7 +96,7 @@ module panana::crypto_market {
     struct UnclaimedMarkets has key {
         // Markets are removed from this map once they're claimed, so we don't expect the vector to grow too big.
         // We should switch this implementation from vector to Set once it's available.
-        markets: simple_map::SimpleMap<Object<CryptoMarketSeries>, smart_vector::SmartVector<u64>>,
+        markets: ordered_map::OrderedMap<Object<CryptoMarketSeries>, smart_vector::SmartVector<u64>>,
     }
 
     /// A crypto market tracks all user shares and bets.
@@ -131,6 +133,9 @@ module panana::crypto_market {
         fee_numerator: u64,
         first_market_timestamp_sec: u64,
     ) acquires CryptoMarketGlobalState {
+        assert!(min_bet > 0, E_BET_TOO_LOW);
+        assert!(open_duration_sec > 0, E_DURATION_ZERO);
+        assert!(fee_numerator < FEE_DENOMINATOR, E_FEE_TOO_HIGH);
         assert!(address_of(account) == @admin, E_UNAUTHORIZED);
 
         let object_seed = series_seed(betting_token, pyth_price_id, open_duration_sec);
@@ -161,6 +166,8 @@ module panana::crypto_market {
         fee_numerator: Option<u64>,
         min_bet: Option<u64>
     ) acquires CryptoMarketSeries {
+        min_bet.for_each_ref(|value| assert!(*value > 0, E_BET_TOO_LOW));
+        fee_numerator.for_each_ref(|numerator| assert!(*numerator < FEE_DENOMINATOR, E_FEE_TOO_HIGH));
         assert!(signer::address_of(account) == @admin, E_UNAUTHORIZED);
         let crypto_series = borrow_global_mut<CryptoMarketSeries>(object::object_address(&crypto_series_obj));
         crypto_series.min_bet = *min_bet.borrow_with_default(&crypto_series.min_bet);
@@ -332,12 +339,12 @@ module panana::crypto_market {
         let account_address = signer::address_of(account);
         if (!exists<UnclaimedMarkets>(account_address)) {
             move_to(account, UnclaimedMarkets {
-                markets: simple_map::new(),
+                markets: ordered_map::new(),
             });
         };
         let unclaimed_markets_ref = borrow_global_mut<UnclaimedMarkets>(account_address);
 
-        if (!unclaimed_markets_ref.markets.contains_key(&crypto_series_obj)) {
+        if (!unclaimed_markets_ref.markets.contains(&crypto_series_obj)) {
             unclaimed_markets_ref.markets.add(crypto_series_obj, smart_vector::new());
         };
 
@@ -389,7 +396,7 @@ module panana::crypto_market {
             return false;
         };
         let unclaimed_markets = borrow_global_mut<UnclaimedMarkets>(account_address);
-        if (!unclaimed_markets.markets.contains_key(&crypto_series_obj)) {
+        if (!unclaimed_markets.markets.contains(&crypto_series_obj)) {
             return false
         };
         let unclaimed_markets_in_config = unclaimed_markets.markets.borrow(&crypto_series_obj);

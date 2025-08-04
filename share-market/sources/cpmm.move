@@ -3,8 +3,8 @@ module panana::cpmm {
     use std::signer;
     use aptos_std::math128;
     use aptos_std::math64;
-    use aptos_std::simple_map;
-    use aptos_std::simple_map::SimpleMap;
+    use aptos_std::ordered_map;
+    use aptos_std::ordered_map::OrderedMap;
     use aptos_framework::event;
     use aptos_framework::fungible_asset;
     use aptos_framework::fungible_asset::{FungibleStore, Metadata, FungibleAsset, BurnRef, MintRef,
@@ -370,12 +370,12 @@ module panana::cpmm {
     #[view]
     public fun token_price(
         pool: Object<LiquidityPool>,
-    ): simple_map::SimpleMap<Object<Metadata>, u64> acquires LiquidityPool {
+    ): ordered_map::OrderedMap<Object<Metadata>, u64> acquires LiquidityPool {
         let p = borrow_global<LiquidityPool>(object_address(&pool));
         let a = fungible_asset::balance(p.token_a_vault);
         let b = fungible_asset::balance(p.token_b_vault);
         let (price_a, price_b) = calc_token_price(a, b);
-        simple_map::new_from(
+        ordered_map::new_from(
             vector[store_metadata(p.token_a_vault), store_metadata(p.token_b_vault)],
             vector[price_a, price_b]
         )
@@ -437,14 +437,14 @@ module panana::cpmm {
     #[view]
     public fun available_tokens(
         pool: Object<LiquidityPool>,
-    ): SimpleMap<Object<Metadata>, u64> acquires LiquidityPool {
+    ): OrderedMap<Object<Metadata>, u64> acquires LiquidityPool {
         let liquidity_pool = borrow_global<LiquidityPool>(object_address(&pool));
         available_tokens_impl(liquidity_pool)
     }
 
     /// Helper to get the number of tokens within the liquidity pool.
-    inline fun available_tokens_impl(liquidity_pool: &LiquidityPool): SimpleMap<Object<Metadata>, u64> {
-        simple_map::new_from(
+    inline fun available_tokens_impl(liquidity_pool: &LiquidityPool): OrderedMap<Object<Metadata>, u64> {
+        ordered_map::new_from(
             vector[liquidity_pool.token_a_metadata, liquidity_pool.token_b_metadata],
             vector[fungible_asset::balance(liquidity_pool.token_a_vault), fungible_asset::balance(liquidity_pool.token_b_vault)],
         )
