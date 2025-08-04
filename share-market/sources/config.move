@@ -6,6 +6,7 @@ module panana::config {
     use aptos_framework::object::Object;
 
     const E_UNAUTHORIZED: u64 = 0;
+    const E_INVALID_ASSET: u64 = 1;
 
     /// Market Config contains global configuration.
     /// Important addresses like the admin and resolver are contained in this global config, as well as
@@ -133,14 +134,16 @@ module panana::config {
     #[view]
     public fun default_challenge_costs(meta: Object<Metadata>): u64 acquires MarketConfig {
         let config = borrow_global<MarketConfig>(@panana);
-        *config.default_challenge_costs.borrow_with_default(meta, &0)
+        assert!(config.default_challenge_costs.contains(meta), E_INVALID_ASSET);
+        *config.default_challenge_costs.borrow(meta)
     }
 
     /// Get the default market creation costs depending on the asset
     #[view]
     public fun market_creation_costs(meta: Object<Metadata>): u64 acquires MarketConfig {
         let config = borrow_global<MarketConfig>(@panana);
-        *config.market_creation_cost.borrow_with_default(meta, &0)
+        assert!(config.market_creation_cost.contains(meta), E_INVALID_ASSET);
+        *config.market_creation_cost.borrow(meta)
     }
 
     /// Get the address that the market fees are transferred to
