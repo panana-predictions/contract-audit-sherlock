@@ -162,9 +162,9 @@ module panana::market_test {
         let (price_yes, price_no) = market::prices(market_obj);
         assert!(is_equal_or_off_by_one(price_yes, 5000_0000), 0);
         assert!(is_equal_or_off_by_one(price_no, 5000_0000), 0);
+        market::buy_shares(user1, market_obj, true, 5_000_000, 0);
 
         market::resolve_market(market_creator, market_obj, metadata(ASSET_SYMBOL_YES));
-        market::buy_shares(user1, market_obj, true, 5_000_000, 0);
         timestamp::update_global_time_for_test_secs(4 * 60 * 60 * 24 * 7);
 
         // prices must always be 8 decimals
@@ -1422,126 +1422,6 @@ module panana::market_test {
     }
 
     #[test(aptos_framework = @aptos_framework, panana = @panana, user1 = @user1, user2 = @user2, market_creator = @admin)]
-    public fun test_many_buy_sell_after_resolution_before_final(aptos_framework: &signer, panana: &signer, user1: &signer, user2: &signer, market_creator: &signer) {
-        let (burn_ref, mint_ref) = initialize_for_test(aptos_framework);
-        market::init_test(aptos_framework, panana);
-
-        let aptos_coin_metadata = *coin::paired_metadata<AptosCoin>().borrow();
-
-        let apot_tokens_user = coin::coin_to_fungible_asset(coin::mint(5000 * OCTAS_PER_APT, &mint_ref));
-        aptos_account::deposit_fungible_assets(signer::address_of(user2), apot_tokens_user);
-
-        let apt_tokens_creator = coin::coin_to_fungible_asset(coin::mint(4000 * OCTAS_PER_APT, &mint_ref));
-        aptos_account::deposit_fungible_assets(signer::address_of(market_creator), apt_tokens_creator);
-
-        let user_tokens = coin::coin_to_fungible_asset(coin::mint(5000 * OCTAS_PER_APT, &mint_ref));
-        aptos_account::deposit_fungible_assets(signer::address_of(user1), user_tokens);
-
-        market::create_market(
-            market_creator,
-            aptos_coin_metadata,
-            string::utf8(b"Will Panana be big?"),
-            string::utf8(b"Great question with an obvious answer"),
-            string::utf8(b"Always resolves to yes"),
-            vector[string::utf8(b"https://panana.com")],
-            0,
-            100 * OCTAS_PER_APT,
-            1000 * OCTAS_PER_APT,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            false,
-            false
-        );
-        let market_obj_fee = market::market_by_id(0);
-
-        coin::destroy_burn_cap(burn_ref);
-        coin::destroy_mint_cap(mint_ref);
-
-        // resolve market without having the market finally resolved (challenge time not passed)
-        market::resolve_market(market_creator, market_obj_fee, metadata(ASSET_SYMBOL_YES));
-
-        market::buy_shares(user1, market_obj_fee, false, 1000 * OCTAS_PER_APT,0);
-        assert!(primary_fungible_store::balance(signer::address_of(user1), metadata(ASSET_SYMBOL_NO)) == 1500_0000_0000);
-
-        market::buy_shares(user1, market_obj_fee, true, 1000 * OCTAS_PER_APT,0);
-        assert!(primary_fungible_store::balance(signer::address_of(user1), metadata(ASSET_SYMBOL_YES)) == 2333_3333_3333);
-
-        market::buy_shares(user1, market_obj_fee, false, 666 * OCTAS_PER_APT,0);
-        assert!(primary_fungible_store::balance(signer::address_of(user1), metadata(ASSET_SYMBOL_NO)) == 2915_6248_1240);
-
-        let balance_before = primary_fungible_store::balance(signer::address_of(user1), aptos_coin_metadata);
-        market::sell_shares(user1, market_obj_fee, false,800_0000_0000, 0);
-        let balance_after = primary_fungible_store::balance(signer::address_of(user1), aptos_coin_metadata);
-        assert!(primary_fungible_store::balance(signer::address_of(user1), metadata(ASSET_SYMBOL_NO)) == 2115_6248_1240);
-        assert!(balance_after - balance_before == 435_6137_4949);
-
-
-        let balance_before = primary_fungible_store::balance(signer::address_of(user1), aptos_coin_metadata);
-        market::sell_shares(user1, market_obj_fee, true, 500_0000_0000, 0);
-        let balance_after = primary_fungible_store::balance(signer::address_of(user1), aptos_coin_metadata);
-        assert!(primary_fungible_store::balance(signer::address_of(user1), metadata(ASSET_SYMBOL_YES)) == 1833_3333_3333);
-        assert!(balance_after - balance_before == 245_9952_4098);
-
-        market::buy_shares(user2, market_obj_fee, true, 666 * OCTAS_PER_APT,0);
-        assert!(primary_fungible_store::balance(signer::address_of(user2), metadata(ASSET_SYMBOL_YES)) == 1165_4926_3528);
-
-        market::buy_shares(user2, market_obj_fee, false, 666 * OCTAS_PER_APT,0);
-        assert!(primary_fungible_store::balance(signer::address_of(user2), metadata(ASSET_SYMBOL_NO)) == 1441_7903_8266);
-
-        let balance_before = primary_fungible_store::balance(signer::address_of(user2), aptos_coin_metadata);
-        market::sell_shares(user2, market_obj_fee, true, 100 * OCTAS_PER_APT, 0);
-        let balance_after = primary_fungible_store::balance(signer::address_of(user2), aptos_coin_metadata);
-        assert!(primary_fungible_store::balance(signer::address_of(user2), metadata(ASSET_SYMBOL_YES)) == 1065_4926_3528);
-        assert!(balance_after - balance_before == 35_4480_5789);
-
-
-        let balance_before = primary_fungible_store::balance(signer::address_of(user1), aptos_coin_metadata);
-        market::sell_shares(user1, market_obj_fee, false, 500 * OCTAS_PER_APT, 0);
-        let balance_after = primary_fungible_store::balance(signer::address_of(user1), aptos_coin_metadata);
-        assert!(primary_fungible_store::balance(signer::address_of(user1), metadata(ASSET_SYMBOL_NO)) == 1615_6248_1240);
-        assert!(balance_after - balance_before == 299_6834_7825);
-
-        market::buy_shares(user2, market_obj_fee, false, 666 * OCTAS_PER_APT,0);
-
-        assert!(primary_fungible_store::balance(signer::address_of(user2), metadata(ASSET_SYMBOL_NO)) == 2459_6941_2259);
-        assert!(primary_fungible_store::balance(signer::address_of(user1), aptos_coin_metadata) == 3315_2924_6872);
-        assert!(primary_fungible_store::balance(signer::address_of(user2), aptos_coin_metadata) == 3037_4480_5789);
-
-
-        let balance_before = primary_fungible_store::balance(signer::address_of(market_creator), aptos_coin_metadata);
-
-        market::withdraw_liquidity(market_creator, market_obj_fee, 100 * OCTAS_PER_APT, false);
-        let balance_after = primary_fungible_store::balance(signer::address_of(market_creator), aptos_coin_metadata);
-        assert!(balance_after - balance_before == 57_1940_5383);
-        assert!(primary_fungible_store::balance(signer::address_of(market_creator), metadata(ASSET_SYMBOL_YES)) == 117_6492_9664);
-        assert!(primary_fungible_store::balance(signer::address_of(market_creator), metadata(ASSET_SYMBOL_NO)) == 0);
-
-        timestamp::update_global_time_for_test_secs(4 * 60 * 60 * 24 * 7);
-
-        let balance_before = primary_fungible_store::balance(signer::address_of(market_creator), aptos_coin_metadata);
-        market::withdraw_liquidity(market_creator, market_obj_fee, 900 * OCTAS_PER_APT, false);
-        let balance_after = primary_fungible_store::balance(signer::address_of(market_creator), aptos_coin_metadata);
-        assert!(balance_after - balance_before == 1573_5901_5422);
-        assert!(primary_fungible_store::balance(signer::address_of(market_creator), metadata(ASSET_SYMBOL_YES)) == 117_6492_9664);
-        assert!(primary_fungible_store::balance(signer::address_of(market_creator), metadata(ASSET_SYMBOL_NO)) == 3);
-
-
-        market::sell_shares(user1, market_obj_fee, true, primary_fungible_store::balance(signer::address_of(user1), metadata(ASSET_SYMBOL_YES)), 0);
-        market::sell_shares(user1, market_obj_fee, false, primary_fungible_store::balance(signer::address_of(user1), metadata(ASSET_SYMBOL_NO)), 0);
-        market::sell_shares(user2, market_obj_fee, true, primary_fungible_store::balance(signer::address_of(user2), metadata(ASSET_SYMBOL_YES)), 0);
-        market::sell_shares(user2, market_obj_fee, false, primary_fungible_store::balance(signer::address_of(user2), metadata(ASSET_SYMBOL_NO)), 0);
-        market::sell_shares(market_creator, market_obj_fee, true, primary_fungible_store::balance(signer::address_of(market_creator), metadata(ASSET_SYMBOL_YES)), 0);
-        market::sell_shares(market_creator, market_obj_fee, false, primary_fungible_store::balance(signer::address_of(market_creator), metadata(ASSET_SYMBOL_NO)), 0);
-
-        let dust_balance = primary_fungible_store::balance(object_address(&market_obj_fee), aptos_coin_metadata);
-        assert!(dust_balance == 9);
-    }
-
-    #[test(aptos_framework = @aptos_framework, panana = @panana, user1 = @user1, user2 = @user2, market_creator = @admin)]
     public fun test_many_buy_sell(aptos_framework: &signer, panana: &signer, user1: &signer, user2: &signer, market_creator: &signer) {
         let (burn_ref, mint_ref) = initialize_for_test(aptos_framework);
         market::init_test(aptos_framework, panana);
@@ -2235,7 +2115,6 @@ module panana::market_test {
             false,
         );
         let market_obj = market::market_by_id(0);
-        let (lp_meta, lps_meta) = market::get_lp_tokens(market_obj);
 
         let user_tokens = coin::coin_to_fungible_asset(coin::mint(1500 * OCTAS_PER_APT, &mint_ref));
         aptos_account::deposit_fungible_assets(signer::address_of(user1), user_tokens);
@@ -2245,17 +2124,12 @@ module panana::market_test {
 
         market::buy_shares(user1, market_obj, true, 1000 * OCTAS_PER_APT,0);
 
-        market::resolve_market(market_creator, market_obj, metadata(ASSET_SYMBOL_YES));
-
-        // Test selling markets after resolution possible
-        market::sell_shares(user1, market_obj, true, 750 * OCTAS_PER_APT, 0);
-
-        market::challenge_market(user1, market_obj);
 
         // Test selling markets after challenging possible
-        market::sell_shares(user1, market_obj, true, 100 * OCTAS_PER_APT, 0);
+        market::sell_shares(user1, market_obj, true, 850 * OCTAS_PER_APT, 0);
 
-        // market creator is also oracle in this case; final resolution finished
+        market::resolve_market(market_creator, market_obj, metadata(ASSET_SYMBOL_YES));
+        market::challenge_market(user1, market_obj);
         market::resolve_market(market_creator, market_obj, metadata(ASSET_SYMBOL_NO));
 
         // Test selling remaining shares
@@ -2297,6 +2171,58 @@ module panana::market_test {
             false,
         );
         let market_obj = market::market_by_id(0);
+
+        let user_tokens = coin::coin_to_fungible_asset(coin::mint(1500 * OCTAS_PER_APT, &mint_ref));
+        aptos_account::deposit_fungible_assets(signer::address_of(user1), user_tokens);
+
+        coin::destroy_burn_cap(burn_ref);
+        coin::destroy_mint_cap(mint_ref);
+
+        market::buy_shares(user1, market_obj, true, 1000 * OCTAS_PER_APT,0);
+
+        market::resolve_market(market_creator, market_obj, metadata(ASSET_SYMBOL_YES));
+        market::challenge_market(user1, market_obj);
+        market::resolve_market(market_creator, market_obj, metadata(ASSET_SYMBOL_YES));
+
+        // Test selling remaining shares
+        market::sell_shares(user1, market_obj, true, primary_fungible_store::balance(signer::address_of(user1), market::metadata(ASSET_SYMBOL_YES)), 0);
+
+        market::withdraw_liquidity(market_creator, market_obj,  1000 * OCTAS_PER_APT, false);
+
+        assert!(primary_fungible_store::balance(object_address(&market_obj), aptos_coin_metadata) == 0);
+    }
+
+    #[expected_failure(abort_code = market::E_MARKET_NOT_TRADEABLE)]
+    #[test(aptos_framework = @aptos_framework, panana = @panana, user1 = @user1, market_creator = @admin)]
+    public fun test_sell_after_resolution_failure(aptos_framework: &signer, panana: &signer, user1: &signer, market_creator: &signer) {
+        let (burn_ref, mint_ref) = initialize_for_test(aptos_framework);
+        market::init_test(aptos_framework, panana);
+
+        let aptos_coin_metadata = *coin::paired_metadata<AptosCoin>().borrow();
+
+        let creator_tokens = coin::coin_to_fungible_asset(coin::mint(1000 * OCTAS_PER_APT, &mint_ref));
+        aptos_account::deposit_fungible_assets(signer::address_of(market_creator), creator_tokens);
+
+        market::create_market(
+            market_creator,
+            aptos_coin_metadata,
+            string::utf8(b"Will Panana be big?"),
+            string::utf8(b"Great question with an obvious answer"),
+            string::utf8(b"Always resolves to yes"),
+            vector[string::utf8(b"https://panana.com")],
+            0,
+            100 * OCTAS_PER_APT,
+            1000 * OCTAS_PER_APT,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            false,
+            false,
+        );
+        let market_obj = market::market_by_id(0);
         let (lp_meta, lps_meta) = market::get_lp_tokens(market_obj);
 
         let user_tokens = coin::coin_to_fungible_asset(coin::mint(1500 * OCTAS_PER_APT, &mint_ref));
@@ -2308,25 +2234,7 @@ module panana::market_test {
         market::buy_shares(user1, market_obj, true, 1000 * OCTAS_PER_APT,0);
 
         market::resolve_market(market_creator, market_obj, metadata(ASSET_SYMBOL_YES));
-
-        // Test selling markets after resolution possible
-        market::sell_shares(user1, market_obj, true, 750 * OCTAS_PER_APT, 0);
-
-        market::challenge_market(user1, market_obj);
-
-        // Test selling markets after challenging possible
-        market::sell_shares(user1, market_obj, true, 100 * OCTAS_PER_APT, 0);
-
-        // market creator is also oracle in this case; final resolution finished
-        market::resolve_market(market_creator, market_obj, metadata(ASSET_SYMBOL_YES));
-
-        // Test selling remaining shares
         market::sell_shares(user1, market_obj, true, primary_fungible_store::balance(signer::address_of(user1), market::metadata(ASSET_SYMBOL_YES)), 0);
-
-        market::withdraw_liquidity(market_creator, market_obj,  1000 * OCTAS_PER_APT, false);
-
-        // minor dust reimains in the pool due to integer arithmetic
-        assert!(primary_fungible_store::balance(object_address(&market_obj), aptos_coin_metadata) == 1);
     }
 
     #[test(aptos_framework = @aptos_framework, panana = @panana, user1 = @user1, market_creator = @admin)]
