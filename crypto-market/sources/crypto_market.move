@@ -45,6 +45,10 @@ module panana::crypto_market {
     const E_PRICE_NOT_FOUND: u64 = 7;
     // Interactions as user with a market are not possible if the crypto series is frozen
     const E_FROZEN: u64 = 8;
+    // Duration of a crypto series must not be zero
+    const E_DURATION_ZERO: u64 = 9;
+    // Fee of a crypto series must be less than 100%
+    const E_FEE_TOO_HIGH: u64 = 10;
 
     // Static fee donimator to allow fees in permille (percent with up to 2 decimals)
     const FEE_DENOMINATOR: u64 = 10_000;
@@ -131,6 +135,9 @@ module panana::crypto_market {
         fee_numerator: u64,
         first_market_timestamp_sec: u64,
     ) acquires CryptoMarketGlobalState {
+        assert!(min_bet > 0, E_BET_TOO_LOW);
+        assert!(open_duration_sec > 0, E_DURATION_ZERO);
+        assert!(fee_numerator < FEE_DENOMINATOR, E_FEE_TOO_HIGH);
         assert!(address_of(account) == @admin, E_UNAUTHORIZED);
 
         let object_seed = series_seed(betting_token, pyth_price_id, open_duration_sec);
@@ -161,6 +168,8 @@ module panana::crypto_market {
         fee_numerator: Option<u64>,
         min_bet: Option<u64>
     ) acquires CryptoMarketSeries {
+        min_bet.for_each_ref(|value| assert!(*value > 0, E_BET_TOO_LOW));
+        fee_numerator.for_each_ref(|numerator| assert!(*numerator < FEE_DENOMINATOR, E_FEE_TOO_HIGH));
         assert!(signer::address_of(account) == @admin, E_UNAUTHORIZED);
         let crypto_series = borrow_global_mut<CryptoMarketSeries>(object::object_address(&crypto_series_obj));
         crypto_series.min_bet = *min_bet.borrow_with_default(&crypto_series.min_bet);
