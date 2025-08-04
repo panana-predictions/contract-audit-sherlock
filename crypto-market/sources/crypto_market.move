@@ -8,12 +8,10 @@ module panana::crypto_market {
     use std::signer::address_of;
     use std::vector;
     use aptos_std::math64;
+    use aptos_std::ordered_map;
     use aptos_std::pool_u64_unbound;
     use aptos_std::pool_u64_unbound::Pool;
-    use aptos_std::simple_map;
     use aptos_std::smart_vector;
-    use aptos_std::table_with_length;
-    use aptos_framework::dispatchable_fungible_asset;
     use aptos_framework::event;
     use aptos_framework::fungible_asset;
     use aptos_framework::fungible_asset::{Metadata, FungibleAsset};
@@ -98,7 +96,7 @@ module panana::crypto_market {
     struct UnclaimedMarkets has key {
         // Markets are removed from this map once they're claimed, so we don't expect the vector to grow too big.
         // We should switch this implementation from vector to Set once it's available.
-        markets: simple_map::SimpleMap<Object<CryptoMarketSeries>, smart_vector::SmartVector<u64>>,
+        markets: ordered_map::OrderedMap<Object<CryptoMarketSeries>, smart_vector::SmartVector<u64>>,
     }
 
     /// A crypto market tracks all user shares and bets.
@@ -341,12 +339,12 @@ module panana::crypto_market {
         let account_address = signer::address_of(account);
         if (!exists<UnclaimedMarkets>(account_address)) {
             move_to(account, UnclaimedMarkets {
-                markets: simple_map::new(),
+                markets: ordered_map::new(),
             });
         };
         let unclaimed_markets_ref = borrow_global_mut<UnclaimedMarkets>(account_address);
 
-        if (!unclaimed_markets_ref.markets.contains_key(&crypto_series_obj)) {
+        if (!unclaimed_markets_ref.markets.contains(&crypto_series_obj)) {
             unclaimed_markets_ref.markets.add(crypto_series_obj, smart_vector::new());
         };
 
@@ -367,7 +365,7 @@ module panana::crypto_market {
             return false;
         };
         let unclaimed_markets = borrow_global_mut<UnclaimedMarkets>(account_address);
-        if (!unclaimed_markets.markets.contains_key(&crypto_series_obj)) {
+        if (!unclaimed_markets.markets.contains(&crypto_series_obj)) {
             return false
         };
         let unclaimed_markets_in_config = unclaimed_markets.markets.borrow(&crypto_series_obj);

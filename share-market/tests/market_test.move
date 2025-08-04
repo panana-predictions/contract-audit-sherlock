@@ -119,6 +119,10 @@ module panana::market_test {
         let creastor_coins = fungible_asset::mint(&mint_ref, 100_000_000);
         fungible_asset::deposit (primary_fungible_store::ensure_primary_store_exists(signer::address_of(market_creator), coins_metadata), creastor_coins);
 
+        config::set_default_min_liquidity_for_asset(market_creator, coins_metadata, 100_000_000);
+        config::set_market_creation_cost(market_creator, coins_metadata, 10_000_000);
+        config::set_default_challenge_costs(market_creator, coins_metadata, 50_000_000);
+
         market::create_market(
             market_creator,
             coins_metadata,

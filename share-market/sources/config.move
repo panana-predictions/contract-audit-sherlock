@@ -1,12 +1,46 @@
 module panana::config {
     use std::option::Option;
     use std::signer;
-    use aptos_std::smart_table;
+    use aptos_std::big_ordered_map;
+    use aptos_framework::aptos_coin::AptosCoin;
+    use aptos_framework::coin;
+    use aptos_framework::event;
     use aptos_framework::fungible_asset::Metadata;
     use aptos_framework::object::Object;
 
     const E_UNAUTHORIZED: u64 = 0;
     const E_INVALID_ASSET: u64 = 1;
+
+    /// Event emitted when global state is updated.
+    #[event]
+    struct GlobalStateUpdatedEvent has copy, drop, store {
+        resolver: address,
+        resolution_oracle: address,
+        default_challenge_duration_sec: u64,
+        is_frozen: bool,
+        market_fee_address: address,
+    }
+
+    /// Event for default min liquidity changes.
+    #[event]
+    struct SetDefaultMinLiquidityForAssetEvent has copy, drop, store {
+        asset: Object<Metadata>,
+        min_liquidity: u64,
+    }
+
+    /// Event for default challenge cost changes.
+    #[event]
+    struct SetDefaultChallengeCostsEvent has copy, drop, store {
+        asset: Object<Metadata>,
+        challenge_cost: u64,
+    }
+
+    /// Event for market creation cost changes.
+    #[event]
+    struct SetMarketCreationCostEvent has copy, drop, store {
+        asset: Object<Metadata>,
+        creation_cost: u64,
+    }
 
     /// Market Config contains global configuration.
     /// Important addresses like the admin and resolver are contained in this global config, as well as
@@ -23,11 +57,11 @@ module panana::config {
             // Default duration until the market resolution can be seen as final/cannot be challenged anymore
             default_challenge_duration_sec: u64,
             // Default costs to challenge a market depending on the market's asset type
-            default_challenge_costs: smart_table::SmartTable<Object<Metadata>, u64>,
+            default_challenge_costs: big_ordered_map::BigOrderedMap<Object<Metadata>, u64>,
             // A map that contains the minimum liquidity to launch a market, depending on the market's asset type
-            default_min_liquidity_required: smart_table::SmartTable<Object<Metadata>, u64>,
+            default_min_liquidity_required: big_ordered_map::BigOrderedMap<Object<Metadata>, u64>,
             // Costs to create a new market, depending on the market's asset type
-            market_creation_cost: smart_table::SmartTable<Object<Metadata>, u64>,
+            market_creation_cost: big_ordered_map::BigOrderedMap<Object<Metadata>, u64>,
 
             // Address to send the market fees to
             market_fee_address: address,
@@ -38,19 +72,47 @@ module panana::config {
     }
 
     fun init_module(account: &signer) {
-        move_to(account, MarketConfig::V1 {
+        let apt_fa = *coin::paired_metadata<AptosCoin>().borrow();
+
+        let min_liquidity = 100_0000_0000;
+        let default_min_liquidity_required = big_ordered_map::new<Object<Metadata>, u64>();
+        default_min_liquidity_required.add(apt_fa, min_liquidity);
+        event::emit(SetDefaultMinLiquidityForAssetEvent {asset: apt_fa, min_liquidity});
+
+        let challenge_cost = 50_0000_0000;
+        let default_challenge_costs = big_ordered_map::new<Object<Metadata>, u64>();
+        default_challenge_costs.add(apt_fa, challenge_cost);
+        event::emit(SetDefaultChallengeCostsEvent{asset: apt_fa, challenge_cost });
+
+        let creation_cost = 10_0000_0000;
+        let market_creation_cost = big_ordered_map::new<Object<Metadata>, u64>();
+        market_creation_cost.add(apt_fa, creation_cost);
+        event::emit(SetMarketCreationCostEvent{asset: apt_fa, creation_cost: creation_cost});
+
+        let market_config = MarketConfig::V1 {
             // Set all values to admin per default
             // Can be changed by the admin after deployment
             resolver: @admin,
             admin: @admin,
             resolution_oracle: @admin,
             default_challenge_duration_sec: 60 * 60 * 24 * 3, // 3 days in seconds
-            default_challenge_costs: smart_table::new(),
-            default_min_liquidity_required: smart_table::new(),
-            market_creation_cost: smart_table::new(),
+            default_challenge_costs,
+            default_min_liquidity_required,
+            market_creation_cost,
             is_frozen: false,
             market_fee_address: @admin,
-        });
+        };
+        event::emit(
+            GlobalStateUpdatedEvent {
+                resolver: market_config.resolver,
+                resolution_oracle: market_config.resolution_oracle,
+                default_challenge_duration_sec: market_config.default_challenge_duration_sec,
+                is_frozen: market_config.is_frozen,
+                market_fee_address: market_config.market_fee_address
+            }
+        );
+
+        move_to(account, market_config);
     }
 
     /// Update the global state. Only admin can do so.
@@ -74,6 +136,15 @@ module panana::config {
         );
         global_state.is_frozen = *is_frozen.borrow_with_default(&global_state.is_frozen);
         global_state.market_fee_address = *market_fee_address.borrow_with_default(&global_state.market_fee_address);
+        event::emit(
+            GlobalStateUpdatedEvent {
+                resolver: global_state.resolver,
+                resolution_oracle: global_state.resolution_oracle,
+                default_challenge_duration_sec: global_state.default_challenge_duration_sec,
+                is_frozen: global_state.is_frozen,
+                market_fee_address: global_state.market_fee_address
+            }
+        );
     }
 
     /// The minimum liquidity for each market specifies the amount of tokens that need to be provided as liquidity
@@ -88,6 +159,7 @@ module panana::config {
         assert_admin(account);
         let global_state = borrow_global_mut<MarketConfig>(@panana);
         global_state.default_min_liquidity_required.upsert(asset, min_liq);
+        event::emit(SetDefaultMinLiquidityForAssetEvent { asset, min_liquidity: min_liq });
     }
 
     /// Specify the default amount of tokens required to challenge a market. The cost is different for each asset, allowing
@@ -101,6 +173,7 @@ module panana::config {
         assert_admin(account);
         let global_state = borrow_global_mut<MarketConfig>(@panana);
         global_state.default_challenge_costs.upsert(asset, challenge_cost);
+        event::emit(SetDefaultChallengeCostsEvent { asset, challenge_cost });
     }
 
     /// Specify the cost to create a new market. The cost is different for each asset, allowing
@@ -114,6 +187,7 @@ module panana::config {
         assert_admin(account);
         let global_state = borrow_global_mut<MarketConfig>(@panana);
         global_state.market_creation_cost.upsert(asset, creation_cost);
+        event::emit(SetMarketCreationCostEvent { asset, creation_cost });
     }
 
 
@@ -127,23 +201,24 @@ module panana::config {
     #[view]
     public fun default_min_liquidity_required(meta: Object<Metadata>): u64 acquires MarketConfig {
         let config = borrow_global<MarketConfig>(@panana);
-        *config.default_min_liquidity_required.borrow_with_default(meta, &0)
+        assert!(config.default_min_liquidity_required.contains(&meta), E_INVALID_ASSET);
+        *config.default_min_liquidity_required.borrow(&meta)
     }
 
     /// Get the default challenge costs depending on the asset
     #[view]
     public fun default_challenge_costs(meta: Object<Metadata>): u64 acquires MarketConfig {
         let config = borrow_global<MarketConfig>(@panana);
-        assert!(config.default_challenge_costs.contains(meta), E_INVALID_ASSET);
-        *config.default_challenge_costs.borrow(meta)
+        assert!(config.default_challenge_costs.contains(&meta), E_INVALID_ASSET);
+        *config.default_challenge_costs.borrow(&meta)
     }
 
     /// Get the default market creation costs depending on the asset
     #[view]
     public fun market_creation_costs(meta: Object<Metadata>): u64 acquires MarketConfig {
         let config = borrow_global<MarketConfig>(@panana);
-        assert!(config.market_creation_cost.contains(meta), E_INVALID_ASSET);
-        *config.market_creation_cost.borrow(meta)
+        assert!(config.market_creation_cost.contains(&meta), E_INVALID_ASSET);
+        *config.market_creation_cost.borrow(&meta)
     }
 
     /// Get the address that the market fees are transferred to
