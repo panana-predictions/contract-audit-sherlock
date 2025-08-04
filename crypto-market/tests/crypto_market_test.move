@@ -87,14 +87,14 @@ module panana::crypto_market_test {
 
         // acc 1 set 1_000_000_000
         // acc1 set 600_000_000 from winning pool
-        crypto_market::place_bet(account, config, metadata, bet_up, 10_000_000);
-        crypto_market::place_bet(account, config, metadata, bet_up, 20_000_000);
-        crypto_market::place_bet(account, config, metadata, bet_up, 30_000_000);
-        crypto_market::place_bet(account2, config, metadata, bet_up, 40_000_000);
-        crypto_market::place_bet(account2, config, metadata, bet_up, 50_000_000);
+        crypto_market::place_bet(account, config, bet_up, 10_000_000);
+        crypto_market::place_bet(account, config, bet_up, 20_000_000);
+        crypto_market::place_bet(account, config, bet_up, 30_000_000);
+        crypto_market::place_bet(account2, config, bet_up, 40_000_000);
+        crypto_market::place_bet(account2, config, bet_up, 50_000_000);
 
-        crypto_market::place_bet(account, config, metadata, !bet_up, 40_000_000);
-        crypto_market::place_bet(account2, config, metadata, !bet_up, 50_000_000);
+        crypto_market::place_bet(account, config, !bet_up, 40_000_000);
+        crypto_market::place_bet(account2, config, !bet_up, 50_000_000);
 
         let resolution_timestamp = FIRST_MARKET_TIMESTAMP + 2 * 180;
         timestamp::update_global_time_for_test_secs(resolution_timestamp);
@@ -159,9 +159,9 @@ module panana::crypto_market_test {
         primary_fungible_store::transfer(funding_account, metadata, object_address(&config), 10_0000_0000);
 
         timestamp::update_global_time_for_test_secs(FIRST_MARKET_TIMESTAMP);
-        crypto_market::place_bet(account, config, metadata, bet_up, amount);
+        crypto_market::place_bet(account, config, bet_up, amount);
         timestamp::update_global_time_for_test_secs(FIRST_MARKET_TIMESTAMP + OPEN_DURATION_SEC);
-        crypto_market::place_bet(account, config, metadata, bet_up, 2 * amount);
+        crypto_market::place_bet(account, config, bet_up, 2 * amount);
 
         let res = crypto_market::unclaimed_markets(account_address, config);
         assert!(vector::length(&res) == 2, 0);
@@ -212,8 +212,8 @@ module panana::crypto_market_test {
         coin::destroy_mint_cap(mint);
 
         timestamp::update_global_time_for_test_secs(FIRST_MARKET_TIMESTAMP);
-        crypto_market::place_bet(account, config, metadata, bet_up, amount);
-        crypto_market::place_bet(account, config, metadata, !bet_up, 2 * amount);
+        crypto_market::place_bet(account, config, bet_up, amount);
+        crypto_market::place_bet(account, config, !bet_up, 2 * amount);
 
 
         let (up_bets,down_bets,up_bets_sum,down_bets_sum,vault_fee,vault_sum) = crypto_market::bets_data(config, 0);
@@ -251,7 +251,7 @@ module panana::crypto_market_test {
         coin::destroy_mint_cap(mint);
 
         timestamp::update_global_time_for_test_secs(FIRST_MARKET_TIMESTAMP);
-        crypto_market::place_bet(account, crypto_series, metadata, true, amount);
+        crypto_market::place_bet(account, crypto_series, true, amount);
         timestamp::update_global_time_for_test_secs(FIRST_MARKET_TIMESTAMP + 2 * OPEN_DURATION_SEC);
         crypto_market::claim_rewards_test(account, crypto_series, 0, 200, 100);
 
@@ -274,7 +274,7 @@ module panana::crypto_market_test {
         coin::destroy_burn_cap(burn);
         coin::destroy_mint_cap(mint);
         timestamp::update_global_time_for_test_secs(FIRST_MARKET_TIMESTAMP);
-        crypto_market::place_bet(account, config, metadata, bet_up, MIN_BET - 1);
+        crypto_market::place_bet(account, config, bet_up, MIN_BET - 1);
     }
 
     #[expected_failure(abort_code = crypto_market::E_NO_REWARDS)]
@@ -294,7 +294,7 @@ module panana::crypto_market_test {
 
         timestamp::update_global_time_for_test_secs(FIRST_MARKET_TIMESTAMP);
 
-        crypto_market::place_bet(account, config, metadata,true, 10_000_000);
+        crypto_market::place_bet(account, config,true, 10_000_000);
         crypto_market::claim_rewards_test(account, config, 0, 100, 200);
     }
 

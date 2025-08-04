@@ -45,6 +45,10 @@ module panana::crypto_market {
     const E_PRICE_NOT_FOUND: u64 = 7;
     // Interactions as user with a market are not possible if the crypto series is frozen
     const E_FROZEN: u64 = 8;
+    // Duration of a crypto series must not be zero
+    const E_DURATION_ZERO: u64 = 9;
+    // Fee of a crypto series must be less than 100%
+    const E_FEE_TOO_HIGH: u64 = 10;
 
     // Static fee donimator to allow fees in permille (percent with up to 2 decimals)
     const FEE_DENOMINATOR: u64 = 10_000;
@@ -131,6 +135,9 @@ module panana::crypto_market {
         fee_numerator: u64,
         first_market_timestamp_sec: u64,
     ) acquires CryptoMarketGlobalState {
+        assert!(min_bet > 0, E_BET_TOO_LOW);
+        assert!(open_duration_sec > 0, E_DURATION_ZERO);
+        assert!(fee_numerator < FEE_DENOMINATOR, E_FEE_TOO_HIGH);
         assert!(address_of(account) == @admin, E_UNAUTHORIZED);
 
         let object_seed = series_seed(betting_token, pyth_price_id, open_duration_sec);
@@ -161,6 +168,8 @@ module panana::crypto_market {
         fee_numerator: Option<u64>,
         min_bet: Option<u64>
     ) acquires CryptoMarketSeries {
+        min_bet.for_each_ref(|value| assert!(*value > 0, E_BET_TOO_LOW));
+        fee_numerator.for_each_ref(|numerator| assert!(*numerator < FEE_DENOMINATOR, E_FEE_TOO_HIGH));
         assert!(signer::address_of(account) == @admin, E_UNAUTHORIZED);
         let crypto_series = borrow_global_mut<CryptoMarketSeries>(object::object_address(&crypto_series_obj));
         crypto_series.min_bet = *min_bet.borrow_with_default(&crypto_series.min_bet);
@@ -172,11 +181,11 @@ module panana::crypto_market {
     public entry fun place_bet(
         account: &signer,
         crypto_series_obj: Object<CryptoMarketSeries>,
-        fa_metadata: Object<Metadata>,
         bet_up: bool,
         value: u64
     ) acquires CryptoMarketSeries, UnclaimedMarkets, CryptoMarket {
         let crypto_series = borrow_global_mut<CryptoMarketSeries>(object::object_address(&crypto_series_obj));
+
         assert!(value >= crypto_series.min_bet, E_BET_TOO_LOW);
         assert!(!crypto_series.is_frozen, E_FROZEN);
 
@@ -207,14 +216,14 @@ module panana::crypto_market {
         };
 
         // Place user prediction
-        let bet_value = primary_fungible_store::withdraw(account, fa_metadata, value);
+        let bet_value = primary_fungible_store::withdraw(account, crypto_series.betting_token, value);
         place_bet_impl(account, crypto_series_obj, crypto_series, bet_up, bet_value);
         event::emit(PlaceBetEvent{
             sender: signer::address_of(account),
             market_series_obj: crypto_series_obj,
-            fa_metadata,
+            fa_metadata: crypto_series.betting_token,
             bet_up,
-            value: value,
+            value,
             market_index,
         });
     }
@@ -350,37 +359,6 @@ module panana::crypto_market {
     /// Helper to determine if the market resolved up.
     inline fun market_resolved_up(start_price: u64, end_price: u64): bool {
         end_price > start_price
-    }
-
-    /// Get the reward proportional to the user's input from the pool.
-    fun redeem_reward_from_pool(
-        market_ref: &mut CryptoMarket,
-        market_signer: &signer,
-        fa_metadata: Object<Metadata>,
-        shareholder: address,
-        market_resolved_up: bool
-    ): FungibleAsset {
-        let total_pool_coins = market_ref.up_pool.total_coins() + market_ref.down_pool.total_coins();
-
-        let new_up_pool_coins = if(market_resolved_up) total_pool_coins else 0;
-        let new_down_pool_coins = total_pool_coins - new_up_pool_coins;
-
-        market_ref.up_pool.update_total_coins(new_up_pool_coins);
-        market_ref.down_pool.update_total_coins(new_down_pool_coins);
-
-        let reward_tokens = fungible_asset::zero(fa_metadata);
-        if (market_resolved_up && market_ref.up_pool.contains(shareholder)) {
-            let up_shares = market_ref.up_pool.shares(shareholder);
-            let redeemed_up_coins = market_ref.up_pool.redeem_shares(shareholder, up_shares);
-
-            fungible_asset::merge(&mut reward_tokens, primary_fungible_store::withdraw(market_signer, fa_metadata, redeemed_up_coins));
-        };
-        if (!market_resolved_up && market_ref.down_pool.contains(shareholder)) {
-            let down_shares = market_ref.down_pool.shares(shareholder);
-            let redeemed_down_coins = market_ref.down_pool.redeem_shares(shareholder, down_shares);
-            fungible_asset::merge(&mut reward_tokens, dispatchable_fungible_asset::withdraw(market_signer, fa_metadata, redeemed_down_coins));
-        };
-        reward_tokens
     }
 
     /// Returns true if the user has pending rewards for the provided market.
